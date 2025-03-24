@@ -20,13 +20,6 @@ def debug(*msg):
         f.write(str(msg) + "\n")
 
 
-def execute(cmd):
-    res = eval(cmd[0])
-    debug(cmd[0])
-    debug(res)
-    return res
-
-
 def main():
     while True:
         msg = read()
@@ -39,8 +32,8 @@ def main():
                 {
                     "format": "json",
                     "namespaces": [{"name": "pod.m3tti.py4clj",
-                                    "vars": [{"name": "execute!"},
-                                             {"name": "wurst"}]}]}
+                                    "vars": [{"name": "exec!"},
+                                             {"name": "eval!"}]}]}
             )
         elif op == "invoke":
             var = msg["var"]
@@ -48,13 +41,14 @@ def main():
             args = json.loads(msg["args"])
             debug(args)
 
-            if var == "pod.m3tti.py4clj/execute!":
-                result = execute(args)
+            if var == "pod.m3tti.py4clj/exec!":
+                exec(args[0])
+                result = True
 
-            if var == "pod.m3tti.py4clj/wurst":
-                result = {"echo":"wurst123"}
+            if var == "pod.m3tti.py4clj/eval!":
+                result = eval(args[0])
 
-
+            debug(result)
             value = json.dumps(result)
             debug("value", value)
 
