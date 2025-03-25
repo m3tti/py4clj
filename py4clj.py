@@ -8,6 +8,30 @@ import inspect
 from bcoding import bencode, bdecode
 
 
+python_import = """
+(defn python-import [lib]
+  (pod.m3tti.py4clj/exec! (str "import " lib)))
+"""
+
+python_call = """
+(require '[cheshire.core :as json])
+(defn python-call [c]
+  (->
+   c
+   json/encode
+   pod.m3tti.py4clj/json-eval!
+   json/decode))
+"""
+
+pyfn = """
+(defmacro pyfn [fn-name & {:keys [as]}]
+  (let [sym (if as
+              as
+              fn-name)]
+    `(defn ~sym [& args]
+       (python-call {:fn ~(str fn-name) :args args}))))
+"""
+
 def read():
     return dict(bdecode(sys.stdin.buffer))
 
@@ -20,16 +44,6 @@ def write(obj):
 def debug(*msg):
     with open("/tmp/debug.log", "a") as f:
         f.write(str(msg) + "\n")
-
-
-def edn_eval(edn):
-    data = edn_format.loads(edn)
-    fn = data[edn_format.Keyword('fn')]
-    args = data[edn_format.Keyword('args')]
-    debug(f"{fn}({args})")
-    call = f"{fn}({args})"
-
-    return edn_format.dumps(eval(call))
 
 
 def json_eval(jo):
@@ -53,11 +67,21 @@ def main():
             write(
                 {
                     "format": "json",
-                    "namespaces": [{"name": "pod.m3tti.py4clj",
-                                    "vars": [{"name": "exec!"},
-                                             {"name": "eval!"},
-                                             {"name": "edn-eval!"},
-                                             {"name": "json-eval!"}]}]}
+                    "namespaces": [
+                        {"name": "pod.m3tti.py4clj",
+                         "vars": [
+                             {"name": "exec!"},
+                             {"name": "eval!"},
+                             {"name": "edn-eval!"},
+                             {"name": "json-eval!"},
+                             {"name": "python-import",
+                              "code": python_import},
+                             {"name": "python-call",
+                              "code": python_call},
+                             {"name": "pyfn",
+                              "code": pyfn}
+                         ]}
+                    ]}
             )
         elif op == "invoke":
             var = msg["var"]
@@ -71,9 +95,6 @@ def main():
 
             if var == "pod.m3tti.py4clj/eval!":
                 result = eval(args[0])
-
-            if var == "pod.m3tti.py4clj/edn-eval!":
-                result = edn_eval(args[0])
 
             if var == "pod.m3tti.py4clj/json-eval!":
                 try:
