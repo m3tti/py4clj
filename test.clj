@@ -4,19 +4,13 @@
 
 (require '[pod.m3tti.py4clj :as py4clj])
 
-(python-call {:fn "len" :args [1 2 3 4]}) ;; error returns nil
+(py4clj/python-import 'math :as 'm)
+(py4clj/pyfn m.sqrt :as pysqrt)
+(pysqrt 42)
 
-(pyfn len :as pylen)
-(pylen [1 2 2])
+(py4clj/python-import 'uuid :as 'pyu)
+(py4clj/pyfn pyu.uuid4 :as pyuuid)
+(pyuuid)
 
-(pyfn json.dumps :as pyjd)
-(pyjd {:a "b"})
-
-(py4clj/python-import "sqlite")
-(py4clj/exec! "con = sqlite.connect(\"tutorial.db\")")
-(py4clj/eval! "con.execute(\"select * from bla\")")
-
-(py4clj/python-call {:fn ".dumps" :args [{:a "b"}]})
-
-(py4clj/python-import "math" :as "m")
-(py4clj/python-call {:fn "m.sqrt" :args [42]})
+(py4clj/setf! 'x 12)
+(py4clj/eval! 'x)
