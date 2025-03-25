@@ -2,15 +2,18 @@
 
 import json
 import sys
-import edn_format
 import inspect
+import importlib
 
 from bcoding import bencode, bdecode
 
 
 python_import = """
-(defn python-import [lib]
-  (pod.m3tti.py4clj/exec! (str "import " lib)))
+(defn python-import [lib & {:keys [as]}]
+  (pod.m3tti.py4clj/exec!
+    (if as
+      (str "import " lib " as " as)
+      (str "import " lib))))
 """
 
 python_call = """
@@ -32,6 +35,15 @@ pyfn = """
        (python-call {:fn ~(str fn-name) :args args}))))
 """
 
+eval_globals = {}
+python_objects = {}
+
+
+def cljfy_handle ():
+    handle = next(python_handle)
+    python_objects[handle] = obj
+    return {"handle": handle}
+
 def read():
     return dict(bdecode(sys.stdin.buffer))
 
@@ -46,6 +58,10 @@ def debug(*msg):
         f.write(str(msg) + "\n")
 
 
+def fn_name(module):
+    return [name for name, fn in inspect.getmembers(module, callable) if name[0] != '_']
+
+
 def json_eval(jo):
     data = json.loads(jo)
     fn = data['fn']
@@ -53,7 +69,7 @@ def json_eval(jo):
     debug(f"{fn}(*{args})")
     call = f"{fn}(*{args})"
 
-    return json.dumps(eval(call))
+    return json.dumps(eval(call, eval_globals))
 
 
 def main():
@@ -72,7 +88,6 @@ def main():
                          "vars": [
                              {"name": "exec!"},
                              {"name": "eval!"},
-                             {"name": "edn-eval!"},
                              {"name": "json-eval!"},
                              {"name": "python-import",
                               "code": python_import},
@@ -90,17 +105,22 @@ def main():
             debug(args)
 
             if var == "pod.m3tti.py4clj/exec!":
-                exec(args[0])
-                result = True
+                try:
+                    exec(args[0], eval_globals)
+                    result = True
+                except:
+                    result = False
 
             if var == "pod.m3tti.py4clj/eval!":
-                result = eval(args[0])
+                result = eval(args[0], eval_globals)
 
             if var == "pod.m3tti.py4clj/json-eval!":
                 try:
                     result = json_eval(args[0])
-                except:
-                    result = None
+                except Exception as e:
+                    issue = getattr(e, 'message', str(e))
+                    debug(issue)
+                    result = json.dumps({"error": issue})
 
             debug(result)
             value = json.dumps(result)
