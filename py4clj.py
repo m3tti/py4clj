@@ -9,21 +9,21 @@ from bcoding import bencode, bdecode
 
 python_import = """
 (defmacro require-python [lib & {:keys [as]}]
-  (let [*namespace* (symbol (if as as lib))
-        *cur-ns* *ns*
-        functions (map (fn [fun]
-                         `(pod.m3tti.py4clj/defpyfn
-                            ~(symbol (str *namespace* "." fun))
-                            :as ~(symbol fun)))
-                       (pod.m3tti.py4clj/fn-names (str lib)))]
-    `(do
-       (py4clj/exec!
-        ~(if as
-           (str "import " lib " as " as)
-           (str "import " lib)))
-       (ns ~*namespace*)
-       ~@functions
-       (ns *cur-ns*))))
+  (do (pod.m3tti.py4clj/exec!
+       (if as
+         (str "import " lib " as " as)
+         (str "import " lib )))
+      (let* [*namespace* (symbol (if as as lib))
+             *cur-ns* *ns*
+             functions (doall (map (fn [fun]
+                                     `(pod.m3tti.py4clj/defpyfn
+                                        ~(symbol (str *namespace* "." fun))
+                                        :as ~(symbol fun)))
+                                   (pod.m3tti.py4clj/fn-names (if as as lib))))]
+        `(do
+           (ns ~*namespace*)
+           ~@functions
+           (ns *cur-ns*)))))
 """
 
 python_call = """
@@ -55,7 +55,10 @@ setf = """
 fnNames = """
 (defn fn-names [module]
   (pod.m3tti.py4clj/eval!
-    (str "[name for name, fn in inspect.getmembers(" module ", callable) if name[0] != '_']")))"""
+    (str
+      "[name for name, fn in inspect.getmembers("
+      module
+      ", callable) if name[0] != '_']")))"""
 
 
 eval_globals = {}
@@ -126,10 +129,10 @@ def describe():
                   "code": setf},
                  {"name": "fn-names",
                   "code": fnNames},
-                 {"name": "require-python",
-                  "code": python_import},
                  {"name": "python-call",
                   "code": python_call},
+                 {"name": "require-python",
+                  "code": python_import},
              ]}
         ]}
     )
@@ -144,7 +147,7 @@ def invoke(msg):
 
     if var == "pod.m3tti.py4clj/exec!":
         try:
-            py_exec(args[0], eval_globals)
+            py_exec(args[0])
             result = True
         except Exception as e:
             issue = getattr(e, 'message', str(e))
@@ -153,7 +156,7 @@ def invoke(msg):
 
     if var == "pod.m3tti.py4clj/eval!":
         try:
-            result = py_eval(args[0], eval_globals)
+            result = py_eval(args[0])
         except Exception as e:
             issue = getattr(e, 'message', str(e))
             debug(issue)
