@@ -7,6 +7,36 @@ import itertools
 from bcoding import bencode, bdecode
 
 
+pythonize = """
+(defn pythonize [e]
+  (cond
+    (string? e) (str "'" e "'")
+    :else e))
+"""
+
+fn_call = """
+(defn fn-call [e]
+  (let [fn (first e)
+        values (map pythonize (rest e))]
+    (str (first e) "(" (clojure.string/join "," values) ")")))
+"""
+
+py_chain = """
+(defn py. [obj & chain]
+  (pod.m3tti.py4clj/eval!
+   (str obj
+        (clojure.string/join
+         ""
+         (map
+          (fn [e]
+            (cond
+              (list? e) (str "." (pod.m3tti.py4clj/fn-call e))
+              (number? e) (str "[" e "]")
+              (symbol? e) (str "." e)
+              :else (pod.m3tti.py4clj/pythonize e)))
+          chain)))))
+"""
+
 python_import = """
 (defmacro require-python [lib & {:keys [as]}]
   (do (pod.m3tti.py4clj/exec!
@@ -26,29 +56,22 @@ python_import = """
            (ns *cur-ns*)))))
 """
 
-python_call = """
-(require '[cheshire.core :as json])
-(defn python-call [c]
-  (->
-   c
-   json/encode
-   json-eval!
-   json/decode))
-"""
 
 pyfn = """
 (defmacro defpyfn [fn-name & {:keys [as]}]
   (let [sym (if as
               as
               fn-name)]
-    `(def ~sym (fn [& args]
-       (python-call {:fn ~(str fn-name) :args args})))))
+    `(def ~sym
+       (fn [& args]
+         (pod.m3tti.py4clj/eval!
+          (pod.m3tti.py4clj/fn-call (cons ~(str fn-name) args)))))))
 """
 
 
 setf = """
 (defn setf! [var value]
-  (exec! (str var "=" value)))
+  (pod.m3tti.py4clj/exec! (str var "=" (pod.m3tti.py4clj/pythonize value))))
 """
 
 
@@ -122,17 +145,20 @@ def describe():
              "vars": [
                  {"name": "exec!"},
                  {"name": "eval!"},
-                 {"name": "json-eval!"},
+                 {"name": "pythonize",
+                  "code": pythonize},
                  {"name": "defpyfn",
                   "code": pyfn},
                  {"name": "setf!",
                   "code": setf},
                  {"name": "fn-names",
                   "code": fnNames},
-                 {"name": "python-call",
-                  "code": python_call},
                  {"name": "require-python",
                   "code": python_import},
+                 {"name": "fn-call",
+                  "code": fn_call},
+                 {"name": "py.",
+                  "code": py_chain},
              ]}
         ]}
     )
@@ -157,14 +183,6 @@ def invoke(msg):
     if var == "pod.m3tti.py4clj/eval!":
         try:
             result = py_eval(args[0])
-        except Exception as e:
-            issue = getattr(e, 'message', str(e))
-            debug(issue)
-            result = cljfy({"error": issue})
-
-    if var == "pod.m3tti.py4clj/json-eval!":
-        try:
-            result = json_eval(args[0])
         except Exception as e:
             issue = getattr(e, 'message', str(e))
             debug(issue)
