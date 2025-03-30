@@ -2,18 +2,28 @@
 
 import json
 import sys
-import inspect
 import itertools
 
 from bcoding import bencode, bdecode
 
 
 python_import = """
-(defn python-import [lib & {:keys [as]}]
-  (exec!
-    (if as
-      (str "import " lib " as " as)
-      (str "import " lib))))
+(defmacro require-python [lib & {:keys [as]}]
+  (let [*namespace* (symbol (if as as lib))
+        *cur-ns* *ns*
+        functions (map (fn [fun]
+                         `(pod.m3tti.py4clj/defpyfn
+                            ~(symbol (str *namespace* "." fun))
+                            :as ~(symbol fun)))
+                       (pod.m3tti.py4clj/fn-names (str lib)))]
+    `(do
+       (py4clj/exec!
+        ~(if as
+           (str "import " lib " as " as)
+           (str "import " lib)))
+       (ns ~*namespace*)
+       ~@functions
+       (ns *cur-ns*))))
 """
 
 python_call = """
@@ -27,12 +37,12 @@ python_call = """
 """
 
 pyfn = """
-(defmacro pyfn [fn-name & {:keys [as]}]
+(defmacro defpyfn [fn-name & {:keys [as]}]
   (let [sym (if as
               as
               fn-name)]
-    `(defn ~sym [& args]
-       (python-call {:fn ~(str fn-name) :args args}))))
+    `(def ~sym (fn [& args]
+       (python-call {:fn ~(str fn-name) :args args})))))
 """
 
 
@@ -42,9 +52,17 @@ setf = """
 """
 
 
+fnNames = """
+(defn fn-names [module]
+  (pod.m3tti.py4clj/eval!
+    (str "[name for name, fn in inspect.getmembers(" module ", callable) if name[0] != '_']")))"""
+
+
 eval_globals = {}
 python_objects = {}
 python_handle = itertools.count(0)
+
+exec("import inspect", eval_globals)
 
 def cljfy(obj):
     try:
@@ -55,8 +73,8 @@ def cljfy(obj):
 
 def cljfy_handle(obj):
     handle = next(python_handle)
-    python_objects[handle] = obj
-    return cljfy({"pyObj": handle})
+    python_objects[f"pyObj_{handle}"] = obj
+    return cljfy(f"pyObj_{handle}")
 
 
 def read():
@@ -72,9 +90,12 @@ def debug(*msg):
     with open("/tmp/debug.log", "a") as f:
         f.write(str(msg) + "\n")
 
+def py_eval(*msg):
+    return eval(*msg, eval_globals)
 
-def fn_name(module):
-    return [name for name, fn in inspect.getmembers(module, callable) if name[0] != '_']
+
+def py_exec(*msg):
+    return exec(*msg, eval_globals)
 
 
 def json_eval(jo):
@@ -82,7 +103,7 @@ def json_eval(jo):
     fn = data['fn']
     args = data['args']
 
-    function = eval(fn, eval_globals)
+    function = py_eval(fn)
 
     if args != None:
         return cljfy(function(*args))
@@ -99,14 +120,16 @@ def describe():
                  {"name": "exec!"},
                  {"name": "eval!"},
                  {"name": "json-eval!"},
-                 {"name": "python-import",
+                 {"name": "defpyfn",
+                  "code": pyfn},
+                 {"name": "setf!",
+                  "code": setf},
+                 {"name": "fn-names",
+                  "code": fnNames},
+                 {"name": "require-python",
                   "code": python_import},
                  {"name": "python-call",
                   "code": python_call},
-                 {"name": "pyfn",
-                  "code": pyfn},
-                 {"name": "setf!",
-                  "code": setf}
              ]}
         ]}
     )
@@ -121,13 +144,20 @@ def invoke(msg):
 
     if var == "pod.m3tti.py4clj/exec!":
         try:
-            exec(args[0], eval_globals)
+            py_exec(args[0], eval_globals)
             result = True
-        except:
-            result = False
+        except Exception as e:
+            issue = getattr(e, 'message', str(e))
+            debug(issue)
+            result = cljfy({"error": issue})
 
     if var == "pod.m3tti.py4clj/eval!":
-        result = eval(args[0], eval_globals)
+        try:
+            result = py_eval(args[0], eval_globals)
+        except Exception as e:
+            issue = getattr(e, 'message', str(e))
+            debug(issue)
+            result = cljfy({"error": issue})
 
     if var == "pod.m3tti.py4clj/json-eval!":
         try:

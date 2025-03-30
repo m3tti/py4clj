@@ -1,0 +1,3 @@
+{:paths ["."]
+ :pods {pod.m3tti/py4clj {:path "./py4clj.py"
+                          :cache false}}}
